@@ -1,12 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Sep  7 11:23:11 2023
 
-@author: Rakin Shahriar
-"""
-
-# AES S-box (substitution box)
-s_box = (
+s_box = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -23,7 +16,8 @@ s_box = (
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-)
+]
+
 
 # AES Rijndael round constants
 rcon = (
@@ -31,9 +25,10 @@ rcon = (
 )
 
 def substitute_bytes(state):
+    state = [[0] * 4 for _ in range(4)]
     for i in range(4):
         for j in range(4):
-            state[i][j] = s_box[state[i][j]]
+            state[j][i] = plaintext[i * 4 + j]
 
 def shift_rows(state):
     for i in range(4):
@@ -45,15 +40,35 @@ def mix_columns(state):
         s1 = state[1][i]
         s2 = state[2][i]
         s3 = state[3][i]
-        state[0][i] = s2 ^ s3 ^ (s1 ^ s2) * 2 ^ (s0 ^ s1) * 3
-        state[1][i] = s0 ^ s3 ^ (s1 ^ s2) * 2 ^ (s0 ^ s1) * 3
-        state[2][i] = s0 ^ s1 ^ (s0 ^ s2) * 2 ^ (s1 ^ s2) * 3
-        state[3][i] = s0 ^ s1 ^ (s0 ^ s2) * 2 ^ (s1 ^ s2) * 3
+        state[0][i] = (
+            multiply(s0, 2) ^ multiply(s1, 3) ^ multiply(s2, 1) ^ multiply(s3, 1)
+        )
+        state[1][i] = (
+            multiply(s0, 1) ^ multiply(s1, 2) ^ multiply(s2, 3) ^ multiply(s3, 1)
+        )
+        state[2][i] = (
+            multiply(s0, 1) ^ multiply(s1, 1) ^ multiply(s2, 2) ^ multiply(s3, 3)
+        )
+        state[3][i] = (
+            multiply(s0, 3) ^ multiply(s1, 1) ^ multiply(s2, 1) ^ multiply(s3, 2)
+        )
+
+def multiply(x, y):
+    result = 0
+    for _ in range(8):
+        if y & 1:
+            result ^= x
+        x <<= 1
+        if x & 0x100:
+            x ^= 0x11B  # AES irreducible polynomial
+        y >>= 1
+    return result
+
 
 def add_round_key(state, round_key):
     for i in range(4):
         for j in range(4):
-            state[i][j] ^= round_key[i][j]
+            state[i][j] ^= round_key[i * 4 + j]
 
 def key_expansion(key):
     key_schedule = [key]
@@ -73,32 +88,20 @@ def key_expansion(key):
     
     return key_schedule
 
-
-
-
-
-def encrypt_block(block, key):
-    state = [list(block[i:i+4]) for i in range(0, len(block), 4)]
-    key_schedule = key_expansion(key)
-    add_round_key(state, key_schedule[0])
-    for round in range(1, 10):
-        substitute_bytes(state)
-        shift_rows(state)
-        mix_columns(state)
-        add_round_key(state, key_schedule[round])
-    substitute_bytes(state)
-    shift_rows(state)
-    add_round_key(state, key_schedule[-1])
-    return [state[i][j] for i in range(4) for j in range(4)]
-
 def aes_encrypt(plaintext, key):
     key_schedule = key_expansion(key)
-    
+
     # Pad the plaintext to a multiple of 16 bytes
     padding_length = 16 - (len(plaintext) % 16)
     plaintext += bytes([padding_length] * padding_length)
-    
-    state = [[plaintext[i + j] for j in range(4)] for i in range(0, len(plaintext), 4)]
+
+    # Initialize the state matrix
+    state = [[0] * 4 for _ in range(4)]
+
+    # Fill the state matrix with data from the plaintext
+    for i in range(4):
+        for j in range(4):
+            state[j][i] = plaintext[i * 4 + j]
 
     add_round_key(state, key_schedule[0])
 
@@ -118,6 +121,8 @@ def aes_encrypt(plaintext, key):
     return bytes(ciphertext)
 
 
+
+
 # Example usage
 key = bytearray(b'ThisIsASecretKey')
 plaintext = bytearray(b'Hello, AES!')
@@ -125,4 +130,3 @@ plaintext = bytearray(b'Hello, AES!')
 cipher_text = aes_encrypt(plaintext, key)
 print("Plaintext:", plaintext)
 print("Cipher Text:", cipher_text)
-
